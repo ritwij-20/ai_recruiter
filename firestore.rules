@@ -1,0 +1,101 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // USERS: users/{userId}
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if false;
+    }
+
+    // JOBS: jobs/{jobId}
+    match /jobs/{jobId} {
+      allow get: if true;
+      allow list: if true;
+
+      // Recruiter create
+      allow create: if isSignedIn() && request.resource.data.recruiterId == request.auth.uid;
+
+      // Update: Recruiter can update their own jobs OR public applicant can increment applicationsCount OR server update
+      allow update: if (
+        isSignedIn() &&
+        resource.data.recruiterId == request.auth.uid
+      ) || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['applicationsCount'])
+      ) || (
+        request.auth == null
+      );
+
+      // Recruiter delete
+      allow delete: if isSignedIn() && resource.data.recruiterId == request.auth.uid;
+    }
+
+    // APPLICATIONS: applications/{applicationId}
+    match /applications/{applicationId} {
+      // Public candidates can submit applications
+      allow create: if request.resource.data.jobId is string &&
+        (
+          (request.resource.data.candidateName is string) ||
+          (request.resource.data.name is string)
+        ) &&
+        (
+          (request.resource.data.candidateEmail is string) ||
+          (request.resource.data.email is string)
+        );
+
+      // Read single & list queries
+      allow get: if true;
+      allow list: if true;
+
+      // Recruiter update OR Server AI analysis update
+      allow update: if (
+        isSignedIn() &&
+        resource.data.recruiterId == request.auth.uid
+      ) || (
+        request.auth == null
+      );
+
+      allow delete: if false;
+    }
+
+    // CANDIDATES: candidates/{candidateId}
+    match /candidates/{candidateId} {
+      // Candidate profile creation (public during application)
+      allow create: if (
+        (request.resource.data.name is string) ||
+        (request.resource.data.candidateName is string)
+      ) && (
+        (request.resource.data.email is string) ||
+        (request.resource.data.candidateEmail is string)
+      );
+
+      // Read candidate
+      allow get: if true;
+      allow list: if true;
+
+      allow update: if (
+        isSignedIn() && (
+          (resource.data.userId != null && resource.data.userId == request.auth.uid) ||
+          (resource.data.id != null && resource.data.id == request.auth.uid) ||
+          (resource.data.email != null && resource.data.email == request.auth.token.email)
+        )
+      ) || (
+        request.auth == null
+      );
+
+      allow delete: if false;
+    }
+  }
+}

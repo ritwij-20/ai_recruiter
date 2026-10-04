@@ -1,0 +1,6 @@
+{
+  "name": "AI Recruiter — Intelligent Resume & Job Matching Platform",
+  "description": "Enterprise AI recruitment platform with explainable candidate scoring, evidence-based matching, and ClaimGuard verification.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
