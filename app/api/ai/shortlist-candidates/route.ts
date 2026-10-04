@@ -137,11 +137,9 @@ export async function POST(req: NextRequest) {
         }
 
         // Run Match Analysis
-        matchAnalysis = await matchCandidateToJob(jobData, candidateProfile, {
+        matchAnalysis = await matchCandidateToJob(jobData, candidateProfile, app.resumeText || '', {
           applicationId: app.id,
-          candidateName: app.candidateName || (app as any).name || 'Candidate',
-          candidateId: app.candidateId,
-          resumeText: app.resumeText
+          candidateName: app.candidateName || (app as any).name || 'Candidate'
         });
 
         // Persist to Firestore
@@ -150,7 +148,7 @@ export async function POST(req: NextRequest) {
           aiMatchAnalysis: matchAnalysis,
           aiMatchStatus: 'completed',
           aiMatchAnalyzedAt: now,
-          aiMatchModel: matchAnalysis.model || GEMINI_MODEL,
+          aiMatchModel: 'gemini-1.5-flash',
           aiMatchVersion: JOB_MATCH_VERSION,
           aiMatchErrorMessage: null,
           updatedAt: now
@@ -159,14 +157,14 @@ export async function POST(req: NextRequest) {
         results.push({
           applicationId: app.id,
           candidateName: app.candidateName || (app as any).name || 'Candidate',
-          matchScore: matchAnalysis.matchScore,
-          matchStrength: matchAnalysis.matchStrength,
-          recommendation: matchAnalysis.recommendation,
+          matchScore: matchAnalysis?.matchScore || 0,
+          matchStrength: matchAnalysis?.matchStrength || 'poor',
+          recommendation: matchAnalysis?.recommendation || 'not_recommended',
           status: 'analyzed'
         });
 
-        highestScore = Math.max(highestScore, matchAnalysis.matchScore);
-        totalScoreSum += matchAnalysis.matchScore;
+        highestScore = Math.max(highestScore, matchAnalysis?.matchScore || 0);
+        totalScoreSum += matchAnalysis?.matchScore || 0;
         analyzedCount++;
       } catch (itemErr: any) {
         console.error(`Shortlist error for application ${app.id}:`, itemErr);

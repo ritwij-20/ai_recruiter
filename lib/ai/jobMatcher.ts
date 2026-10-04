@@ -3,16 +3,19 @@ import { GEMINI_MODEL, FALLBACK_GEMINI_MODEL, getGeminiApiKey } from '@/lib/ai/c
 import { 
   Job, 
   AICandidateProfile, 
-  JobMatchAnalysis, 
+  AIMatchAnalysis, 
   RequirementAnalysisItem, 
-  ClaimGuardAnalysis, 
-  MatchStrength, 
-  AIMatchRecommendation,
-  RequirementCategory,
+  ClaimGuardResult,
   RequirementType,
   RequirementStatus,
-  ClaimType
+  RecommendationType
 } from '@/types/recruiter';
+
+type MatchStrength = 'exceptional' | 'strong' | 'moderate' | 'weak' | 'poor';
+type AIMatchRecommendation = 'STRONG MATCH' | 'GOOD MATCH' | 'REVIEW' | 'NOT RECOMMENDED';
+type RequirementCategory = 'skill' | 'experience' | 'education' | 'certification' | 'project' | 'other';
+type ClaimType = 'supported' | 'unverified' | 'potentially_contradictory';
+
 
 export const JOB_MATCH_VERSION = '1.0';
 
@@ -177,7 +180,7 @@ export async function matchCandidateToJob(
   aiProfile: AICandidateProfile,
   resumeText?: string,
   options: MatchCandidateOptions = {}
-): Promise<JobMatchAnalysis> {
+): Promise<AIMatchAnalysis> {
   const apiKey = getGeminiApiKey();
 
   const modelsToTry = [
@@ -268,14 +271,14 @@ ${candidatePrompt}
     }
 
     // Validate Recommendation
-    let recommendation: AIMatchRecommendation = 'consider';
-    if (['strongly_recommend', 'recommend', 'consider', 'not_recommended'].includes(parsed.recommendation)) {
+    let recommendation: AIMatchRecommendation = 'NOT RECOMMENDED';
+    if (['STRONG MATCH', 'GOOD MATCH', 'REVIEW', 'NOT RECOMMENDED'].includes(parsed.recommendation)) {
       recommendation = parsed.recommendation;
     } else {
-      if (matchScore >= 85) recommendation = 'strongly_recommend';
-      else if (matchScore >= 70) recommendation = 'recommend';
-      else if (matchScore >= 50) recommendation = 'consider';
-      else recommendation = 'not_recommended';
+      if (matchScore >= 85) recommendation = 'STRONG MATCH';
+      else if (matchScore >= 70) recommendation = 'GOOD MATCH';
+      else if (matchScore >= 50) recommendation = 'REVIEW';
+      else recommendation = 'NOT RECOMMENDED';
     }
 
     // Validate Requirement Analysis Array
@@ -313,34 +316,30 @@ ${candidatePrompt}
         }))
       : [];
 
-    const claimGuard: ClaimGuardAnalysis = {
-      status: claimGuardStatus,
+    const claimGuard: ClaimGuardResult = {
       summary: claimGuardParsed.summary || (claimGuardClaims.length === 0 ? 'No inconsistencies detected.' : 'Claim verification complete.'),
-      claims: claimGuardClaims
+      hasIssues: claimGuardStatus !== 'no_issue',
+      unverifiedClaims: claimGuardClaims.filter((c: any) => c.type === 'unverified').map((c: any) => c.claim),
+      potentialInconsistencies: claimGuardClaims.filter((c: any) => c.type === 'potentially_contradictory').map((c: any) => c.claim),
+      findings: claimGuardClaims.map((c: any) => ({
+        claim: c.claim as string,
+        issueType: c.type === 'unverified' ? ('unverified' as const) : ('inconsistency' as const),
+        description: c.explanation as string,
+        recommendation: 'Verify claim evidence.'
+      }))
     };
 
-    const matchAnalysis: JobMatchAnalysis = {
-      applicationId: options.applicationId || '',
-      jobId: job.id,
-      candidateId: '',
-      candidateName: options.candidateName || 'Candidate',
+    const matchAnalysis: AIMatchAnalysis = {
       matchScore,
       matchStrength,
-      recommendation,
+      recommendation: recommendation as RecommendationType,
       summary: String(parsed.summary || 'Candidate analyzed against job requirements.'),
       whyCandidateMatches: String(parsed.whyCandidateMatches || 'Analysis completed based on submitted evidence.'),
       requirementAnalysis,
       keyStrengths: Array.isArray(parsed.keyStrengths) ? parsed.keyStrengths.map(String) : [],
       missingOrWeakRequirements: Array.isArray(parsed.missingOrWeakRequirements) ? parsed.missingOrWeakRequirements.map(String) : [],
-      experienceAssessment: String(parsed.experienceAssessment || 'Experience evaluated against role scope.'),
-      educationAssessment: String(parsed.educationAssessment || 'Academic background evaluated.'),
-      skillsAssessment: String(parsed.skillsAssessment || 'Skill competencies evaluated against requirements.'),
-      projectAndCertificationAssessment: String(parsed.projectAndCertificationAssessment || 'Supporting projects and certifications reviewed.'),
       claimGuard,
-      recommendationExplanation: String(parsed.recommendationExplanation || 'Recommendation derived from requirement analysis and evidence quality.'),
-      analyzedAt: new Date().toISOString(),
-      model: usedModel,
-      version: JOB_MATCH_VERSION
+      recommendationExplanation: String(parsed.recommendationExplanation || 'Recommendation derived from requirement analysis and evidence quality.')
     };
 
     return matchAnalysis;
